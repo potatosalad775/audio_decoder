@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "audio_decoder_plugin.h"
 
 #include <windows.h>
@@ -777,7 +778,7 @@ flutter::EncodableMap AudioDecoderPlugin::GetAudioInfo(const std::string& path) 
 
     IMFMediaSource* pSource = nullptr;
     hr = pReader->GetServiceForStream(
-        MF_SOURCE_READER_MEDIASOURCE, GUID_NULL,
+        static_cast<DWORD>(MF_SOURCE_READER_MEDIASOURCE), GUID_NULL,
         __uuidof(IMFMediaSource), reinterpret_cast<LPVOID*>(&pSource));
     if (SUCCEEDED(hr) && pSource) {
         IMFPresentationDescriptor* pPD = nullptr;
@@ -845,7 +846,9 @@ std::string AudioDecoderPlugin::TrimAudio(
     }
 
     std::string ext = outputPath.substr(outputPath.find_last_of('.') + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { 
+        return static_cast<char>(::tolower(c)); 
+    });
 
     if (ext == "m4a") {
         // M4A trimming uses DecodeToPcm (full buffering) because
