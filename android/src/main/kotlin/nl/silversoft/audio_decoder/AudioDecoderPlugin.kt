@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -19,6 +20,9 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
 import kotlin.math.max
@@ -580,7 +584,6 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
     // region Convert to M4A
 
     private fun performM4aConversion(inputPath: String, outputPath: String) {
-        // Step 1: Decode input to PCM
         val extractor = MediaExtractor()
         extractor.setDataSource(inputPath)
 
@@ -599,58 +602,200 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
             extractor.release()
             throw Exception("No audio track found in $inputPath")
         }
-
         extractor.selectTrack(audioTrackIndex)
 
         val mime = format.getString(MediaFormat.KEY_MIME)!!
         val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
 
+        // Concurrency primitives
+        val pcmQueue = ArrayBlockingQueue<ByteArray>(10)
+        val eosSentinel = ByteArray(0)
+        val latch = CountDownLatch(1)
+        val errorRef = AtomicReference<Throwable?>(null)
+
+        fun signalError(t: Throwable) {
+            if (errorRef.compareAndSet(null, t)) {
+                pcmQueue.clear()
+                pcmQueue.offer(eosSentinel)
+                latch.countDown()
+            }
+        }
+
+        // Handler threads for async codec callbacks
+        val decoderThread = HandlerThread("M4aDecoder").apply { start() }
+        val encoderThread = HandlerThread("M4aEncoder").apply { start() }
+        val decoderHandler = Handler(decoderThread.looper)
+        val encoderHandler = Handler(encoderThread.looper)
+
+        // Set up encoder + muxer (must be ready before decoder starts producing)
+        val outputFile = File(outputPath)
+        if (outputFile.exists()) outputFile.delete()
+
+        val encoderFormat = MediaFormat.createAudioFormat(
+            MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount
+        )
+        encoderFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+        encoderFormat.setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
+        encoderFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
+
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+        val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var muxerTrackIndex = -1
+        var muxerStarted = false
+
+        // Encoder callback state (only accessed on encoderThread — no sync needed)
+        var feedChunk: ByteArray? = null
+        var feedOffset = 0
+        var presentationTimeUs = 0L
+        val bytesPerSample = 2 * channelCount
+        var encInputEosSent = false
+
+        encoder.setCallback(object : MediaCodec.Callback() {
+            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+                try {
+                    if (encInputEosSent) return
+
+                    val buf = codec.getInputBuffer(index) ?: return
+                    buf.clear()
+                    var written = 0
+                    var eos = false
+
+                    while (buf.remaining() > 0) {
+                        if (feedChunk == null) {
+                            val chunk = pcmQueue.take()
+                            if (chunk.isEmpty()) {
+                                eos = true
+                                break
+                            }
+                            feedChunk = chunk
+                            feedOffset = 0
+                        }
+                        val available = feedChunk!!.size - feedOffset
+                        val toCopy = minOf(available, buf.remaining())
+                        buf.put(feedChunk!!, feedOffset, toCopy)
+                        written += toCopy
+                        feedOffset += toCopy
+                        if (feedOffset >= feedChunk!!.size) {
+                            feedChunk = null
+                            feedOffset = 0
+                        }
+                    }
+
+                    val flags = if (eos) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
+                    if (written > 0) {
+                        codec.queueInputBuffer(index, 0, written, presentationTimeUs, flags)
+                        presentationTimeUs += (written.toLong() / bytesPerSample) * 1_000_000L / sampleRate
+                    } else {
+                        codec.queueInputBuffer(index, 0, 0, presentationTimeUs, flags)
+                    }
+                    if (eos) encInputEosSent = true
+                } catch (t: Throwable) {
+                    signalError(t)
+                }
+            }
+
+            override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
+                try {
+                    if (info.size > 0 && muxerStarted) {
+                        val buf = codec.getOutputBuffer(index)!!
+                        buf.position(info.offset)
+                        buf.limit(info.offset + info.size)
+                        muxer.writeSampleData(muxerTrackIndex, buf, info)
+                    }
+                    codec.releaseOutputBuffer(index, false)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        latch.countDown()
+                    }
+                } catch (t: Throwable) {
+                    signalError(t)
+                }
+            }
+
+            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+                signalError(e)
+            }
+
+            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                try {
+                    muxerTrackIndex = muxer.addTrack(format)
+                    muxer.start()
+                    muxerStarted = true
+                } catch (t: Throwable) {
+                    signalError(t)
+                }
+            }
+        }, encoderHandler)
+
+        encoder.configure(encoderFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        encoder.start()
+
+        // Set up decoder
         val decoder = MediaCodec.createDecoderByType(mime)
+
+        decoder.setCallback(object : MediaCodec.Callback() {
+            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+                try {
+                    val buf = codec.getInputBuffer(index) ?: return
+                    val size = extractor.readSampleData(buf, 0)
+                    if (size < 0) {
+                        codec.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    } else {
+                        codec.queueInputBuffer(index, 0, size, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                } catch (t: Throwable) {
+                    signalError(t)
+                }
+            }
+
+            override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
+                try {
+                    if (info.size > 0) {
+                        val buf = codec.getOutputBuffer(index)!!
+                        val chunk = ByteArray(info.size)
+                        buf.get(chunk)
+                        pcmQueue.put(chunk)
+                    }
+                    codec.releaseOutputBuffer(index, false)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        pcmQueue.put(eosSentinel)
+                    }
+                } catch (t: Throwable) {
+                    signalError(t)
+                }
+            }
+
+            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+                signalError(e)
+            }
+
+            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                // No action needed for decoder
+            }
+        }, decoderHandler)
+
         decoder.configure(format, null, null, 0)
         decoder.start()
 
-        val pcmChunks = mutableListOf<ByteArray>()
-        val bufferInfo = MediaCodec.BufferInfo()
-        var inputDone = false
-        var outputDone = false
-        val timeoutUs = 10_000L
-
-        while (!outputDone) {
-            if (!inputDone) {
-                val idx = decoder.dequeueInputBuffer(timeoutUs)
-                if (idx >= 0) {
-                    val buf = decoder.getInputBuffer(idx)!!
-                    val size = extractor.readSampleData(buf, 0)
-                    if (size < 0) {
-                        decoder.queueInputBuffer(idx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        inputDone = true
-                    } else {
-                        decoder.queueInputBuffer(idx, 0, size, extractor.sampleTime, 0)
-                        extractor.advance()
-                    }
-                }
+        // Wait for encoder to finish, then clean up
+        try {
+            latch.await()
+        } finally {
+            try { decoder.stop() } catch (_: Throwable) {}
+            try { decoder.release() } catch (_: Throwable) {}
+            try { encoder.stop() } catch (_: Throwable) {}
+            try { encoder.release() } catch (_: Throwable) {}
+            if (muxerStarted) {
+                try { muxer.stop() } catch (_: Throwable) {}
             }
-            val idx = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
-            if (idx >= 0) {
-                if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                    outputDone = true
-                }
-                if (bufferInfo.size > 0) {
-                    val buf = decoder.getOutputBuffer(idx)!!
-                    val chunk = ByteArray(bufferInfo.size)
-                    buf.get(chunk)
-                    pcmChunks.add(chunk)
-                }
-                decoder.releaseOutputBuffer(idx, false)
-            }
+            try { muxer.release() } catch (_: Throwable) {}
+            try { extractor.release() } catch (_: Throwable) {}
+            decoderThread.quitSafely()
+            encoderThread.quitSafely()
         }
-        decoder.stop()
-        decoder.release()
-        extractor.release()
 
-        // Step 2: Encode PCM to AAC and mux into M4A
-        encodePcmToM4a(pcmChunks, outputPath, sampleRate, channelCount)
+        errorRef.get()?.let { throw it as? Exception ?: Exception(it) }
     }
 
     // endregion
