@@ -313,13 +313,14 @@ static std::string ConvertToWav(const std::string& inputPath,
 }
 
 // Returns the name of the first available GStreamer AAC encoder element.
+// Uses gst_element_factory_make() to verify the plugin actually loads (not just cached in registry).
 // Priority: avenc_aac (gst-libav) -> fdkaacenc (gst-plugins-bad) -> voaacenc (gst-plugins-bad)
 static std::string GetAacEncoderName() {
     const char* candidates[] = { "avenc_aac", "fdkaacenc", "voaacenc", nullptr };
     for (int i = 0; candidates[i] != nullptr; i++) {
-        GstElementFactory* f = gst_element_factory_find(candidates[i]);
-        if (f) {
-            gst_object_unref(f);
+        GstElement* el = gst_element_factory_make(candidates[i], nullptr);
+        if (el) {
+            gst_object_unref(el);
             return candidates[i];
         }
     }
