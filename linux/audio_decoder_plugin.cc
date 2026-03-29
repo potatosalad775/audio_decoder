@@ -312,6 +312,21 @@ static std::string ConvertToWav(const std::string& inputPath,
     return outputPath;
 }
 
+// Returns the name of the first available GStreamer AAC encoder element.
+// Priority: avenc_aac (gst-libav) -> fdkaacenc (gst-plugins-bad) -> voaacenc (gst-plugins-bad)
+static std::string GetAacEncoderName() {
+    const char* candidates[] = { "avenc_aac", "fdkaacenc", "voaacenc", nullptr };
+    for (int i = 0; candidates[i] != nullptr; i++) {
+        GstElementFactory* f = gst_element_factory_find(candidates[i]);
+        if (f) {
+            gst_object_unref(f);
+            return candidates[i];
+        }
+    }
+    throw std::runtime_error(
+        "No AAC encoder available. Install gstreamer1.0-libav or gstreamer1.0-plugins-bad.");
+}
+
 static std::string ConvertToM4a(const std::string& inputPath,
                                 const std::string& outputPath) {
     // Stream PCM to temp WAV, then encode to M4A via GStreamer pipeline
@@ -319,9 +334,10 @@ static std::string ConvertToM4a(const std::string& inputPath,
     StreamPcmToWav(inputPath, tempWav);
 
     gchar* srcUri = g_filename_to_uri(tempWav.c_str(), nullptr, nullptr);
+    std::string aacEnc = GetAacEncoderName();
     std::string pipeDesc =
         std::string("uridecodebin uri=\"") + srcUri + "\" ! audioconvert ! "
-        "avenc_aac ! mp4mux ! filesink location=\"" + outputPath + "\"";
+        + aacEnc + " ! mp4mux ! filesink location=\"" + outputPath + "\"";
     g_free(srcUri);
 
     GError* error = nullptr;
@@ -480,9 +496,10 @@ static std::string TrimAudio(const std::string& inputPath,
         StreamPcmToWav(inputPath, tempWav, startMs, endMs);
 
         gchar* srcUri = g_filename_to_uri(tempWav.c_str(), nullptr, nullptr);
+        std::string aacEnc = GetAacEncoderName();
         std::string pipeDesc =
             std::string("uridecodebin uri=\"") + srcUri + "\" ! audioconvert ! "
-            "avenc_aac ! mp4mux ! filesink location=\"" + outputPath + "\"";
+            + aacEnc + " ! mp4mux ! filesink location=\"" + outputPath + "\"";
         g_free(srcUri);
 
         GError* error = nullptr;
