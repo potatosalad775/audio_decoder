@@ -583,9 +583,16 @@ static FlValue* GetWaveform(const std::string& path, int numberOfSamples) {
     (G_TYPE_CHECK_INSTANCE_CAST((obj), audio_decoder_plugin_get_type(), \
                                 AudioDecoderPlugin))
 
+typedef struct _AudioDecoderPlugin AudioDecoderPlugin;
+typedef struct _AudioDecoderPluginClass AudioDecoderPluginClass;
+
 struct _AudioDecoderPlugin {
     GObject parent_instance;
     FlMethodChannel* channel;
+};
+
+struct _AudioDecoderPluginClass {
+    GObjectClass parent_class;
 };
 
 G_DEFINE_TYPE(AudioDecoderPlugin, audio_decoder_plugin, g_object_get_type())
