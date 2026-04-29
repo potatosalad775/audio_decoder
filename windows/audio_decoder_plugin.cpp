@@ -19,6 +19,7 @@
 #include <functional>
 #include <cmath>
 #include <algorithm>
+#include <cctype> 
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
@@ -847,7 +848,7 @@ std::string AudioDecoderPlugin::TrimAudio(
     std::string ext = outputPath.substr(outputPath.find_last_of('.') + 1);
     std::transform(ext.begin(), ext.end(), ext.begin(),
 		    [](unsigned char c) {
-		    	return static_cast<char>(std::tolower());
+		    	return static_cast<char>(std::tolower(c));
 		});
 
     if (ext == "m4a") {
