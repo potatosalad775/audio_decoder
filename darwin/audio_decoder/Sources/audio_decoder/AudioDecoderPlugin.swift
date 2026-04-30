@@ -506,6 +506,16 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
     }
 
     private func performGetWaveform(path: String, numberOfSamples: Int, normalization: String = "perFile") throws -> [Double] {
+        // Fail fast on an invalid normalization mode before opening the asset
+        // and decoding the PCM samples.
+        guard normalization == "perFile" || normalization == "absolute" else {
+            throw NSError(
+                domain: "AudioDecoder", code: 43,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Unknown waveform normalization: \(normalization)"]
+            )
+        }
+
         let url = URL(fileURLWithPath: path)
         let asset = AVURLAsset(url: url)
 
@@ -581,19 +591,11 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
         // Samples are signed 16-bit PCM with range [-32768, 32767], so the
         // absolute mode divides by the max magnitude (32768) to keep the
         // result inside [0.0, 1.0] even when a window is filled with -32768.
-        switch normalization {
-        case "perFile":
-            if maxRms > 0 {
-                waveform = waveform.map { $0 / maxRms }
-            }
-        case "absolute":
+        // (normalization is already validated up front.)
+        if normalization == "absolute" {
             waveform = waveform.map { $0 / 32768.0 }
-        default:
-            throw NSError(
-                domain: "AudioDecoder", code: 43,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "Unknown waveform normalization: \(normalization)"]
-            )
+        } else if maxRms > 0 {
+            waveform = waveform.map { $0 / maxRms }
         }
 
         // Pad if needed

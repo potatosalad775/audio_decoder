@@ -958,6 +958,13 @@ flutter::EncodableList AudioDecoderPlugin::GetWaveform(
     const std::string& path, int numberOfSamples,
     const std::string& normalization) {
 
+    // Fail fast on an invalid normalization mode before doing the expensive
+    // DecodeToPcm + RMS work below.
+    if (normalization != "perFile" && normalization != "absolute") {
+        throw std::invalid_argument(
+            "Unknown waveform normalization: " + normalization);
+    }
+
     auto pcm = DecodeToPcm(path);
 
     if (pcm.data.empty()) {
@@ -993,10 +1000,6 @@ flutter::EncodableList AudioDecoderPlugin::GetWaveform(
     // Samples are signed 16-bit PCM with range [-32768, 32767], so absolute
     // mode divides by the max magnitude (32768) to keep the result inside
     // [0.0, 1.0] even when a window is filled with -32768.
-    if (normalization != "perFile" && normalization != "absolute") {
-        throw std::invalid_argument(
-            "Unknown waveform normalization: " + normalization);
-    }
     const bool useAbsolute = (normalization == "absolute");
     flutter::EncodableList result;
     for (size_t i = 0; i < waveform.size(); i++) {

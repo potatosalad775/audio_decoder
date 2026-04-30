@@ -829,6 +829,14 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
         numberOfSamples: Int,
         normalization: String = "perFile",
     ): List<Double> {
+        // Fail fast on an invalid normalization mode before setting up the
+        // MediaExtractor and decoding the PCM samples.
+        if (normalization != "perFile" && normalization != "absolute") {
+            throw IllegalArgumentException(
+                "Unknown waveform normalization: $normalization"
+            )
+        }
+
         val extractor = MediaExtractor()
         extractor.setDataSource(path)
 
@@ -924,12 +932,13 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
         // Samples are signed 16-bit PCM with range [-32768, 32767], so the
         // absolute mode divides by the max magnitude (32768) to keep the
         // result inside [0.0, 1.0] even when a window is filled with -32768.
-        val normalized = when (normalization) {
-            "perFile" -> if (maxRms > 0) waveform.map { it / maxRms } else waveform
-            "absolute" -> waveform.map { it / 32768.0 }
-            else -> throw IllegalArgumentException(
-                "Unknown waveform normalization: $normalization"
-            )
+        // (normalization is already validated up front.)
+        val normalized = if (normalization == "absolute") {
+            waveform.map { it / 32768.0 }
+        } else if (maxRms > 0) {
+            waveform.map { it / maxRms }
+        } else {
+            waveform
         }
 
         // Pad if needed
