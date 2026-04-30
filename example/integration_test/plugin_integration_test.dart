@@ -343,8 +343,8 @@ void main() {
         }
 
         // perFile is rescaled so its loudest window equals 1.0;
-        // absolute is divided by Int16.MAX, so its peak should be <= the
-        // perFile peak. They should not be identical.
+        // absolute is divided by the int16 max magnitude (32768), so its
+        // peak should be <= the perFile peak. They should not be identical.
         final perFilePeak = perFile.reduce((a, b) => a > b ? a : b);
         final absolutePeak = absolute.reduce((a, b) => a > b ? a : b);
         expect(absolutePeak, lessThanOrEqualTo(perFilePeak + 1e-9));

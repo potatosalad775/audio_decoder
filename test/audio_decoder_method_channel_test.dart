@@ -182,6 +182,26 @@ void main() {
     );
   });
 
+  test('getWaveform converts native PlatformException to AudioConversionException', () async {
+    // Exercises the error path the native side uses for any failure during
+    // waveform extraction, including the explicit throw on an unrecognized
+    // normalization value (defence-in-depth tak die niet via de publieke
+    // Dart-API bereikt kan worden).
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      MethodCall methodCall,
+    ) async {
+      throw PlatformException(
+        code: 'WAVEFORM_ERROR',
+        message: 'Unknown waveform normalization: foobar',
+      );
+    });
+
+    expect(
+      () => platform.getWaveform('/input/test.mp3', 50),
+      throwsA(isA<AudioConversionException>()),
+    );
+  });
+
   test('convertToWav throws when native returns null', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
       MethodCall methodCall,
@@ -321,6 +341,24 @@ void main() {
         'mp3',
         50,
         normalization: WaveformNormalization.absolute,
+      );
+    });
+
+    test('getWaveformBytes converts native PlatformException to AudioConversionException', () async {
+      // Same defence-in-depth coverage as getWaveform — verifies the error
+      // path triggered by any native throw (including unknown normalization).
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        MethodCall methodCall,
+      ) async {
+        throw PlatformException(
+          code: 'WAVEFORM_ERROR',
+          message: 'Unknown waveform normalization: foobar',
+        );
+      });
+
+      expect(
+        () => platform.getWaveformBytes(testInput, 'mp3', 50),
+        throwsA(isA<AudioConversionException>()),
       );
     });
 
