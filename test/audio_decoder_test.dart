@@ -155,6 +155,14 @@ void main() {
     expect(fakePlatform.lastNormalization, WaveformNormalization.perFile);
   });
 
+  test('WaveformNormalization wireValue is the contract with native side', () {
+    // The wireValue strings are matched literally inside the native
+    // backends (Kotlin/Swift/C++). Renaming or changing them silently
+    // breaks all platforms, so this test pins them as a contract.
+    expect(WaveformNormalization.perFile.wireValue, 'perFile');
+    expect(WaveformNormalization.absolute.wireValue, 'absolute');
+  });
+
   test('getWaveform forwards absolute normalization to platform', () async {
     MockAudioDecoderPlatform fakePlatform = MockAudioDecoderPlatform();
     AudioDecoderPlatform.instance = fakePlatform;

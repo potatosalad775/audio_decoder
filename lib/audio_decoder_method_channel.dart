@@ -124,7 +124,7 @@ final class MethodChannelAudioDecoder extends AudioDecoderPlatform {
         {
           'path': path,
           'numberOfSamples': numberOfSamples,
-          'normalization': normalization.name,
+          'normalization': normalization.wireValue,
         },
       );
       if (result == null) {
@@ -262,7 +262,7 @@ final class MethodChannelAudioDecoder extends AudioDecoderPlatform {
           'inputData': inputData,
           'formatHint': formatHint,
           'numberOfSamples': numberOfSamples,
-          'normalization': normalization.name,
+          'normalization': normalization.wireValue,
         },
       );
       if (result == null) {

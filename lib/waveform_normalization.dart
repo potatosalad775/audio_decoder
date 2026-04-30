@@ -11,12 +11,19 @@ enum WaveformNormalization {
   /// This is the default and matches the behavior of audio_decoder up to and
   /// including 0.7.x. Best for showing a single track in isolation: voice
   /// memos, podcast previews, chat voice messages, etc.
-  perFile,
+  perFile('perFile'),
 
-  /// Amplitudes are scaled against the maximum possible 16-bit PCM value
-  /// (32767), so absolute loudness is preserved across files.
+  /// Amplitudes are scaled so absolute loudness is preserved across files.
   ///
   /// Two recordings of different loudness will visually differ in height.
   /// Best for music apps that show several tracks side by side.
-  absolute,
+  absolute('absolute')
+  ;
+
+  const WaveformNormalization(this.wireValue);
+
+  /// Stable identifier used to communicate the chosen mode to the native
+  /// platform implementations. Pinned so it survives Dart-side renames of the
+  /// enum constants.
+  final String wireValue;
 }

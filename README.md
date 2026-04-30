@@ -129,8 +129,8 @@ By default each waveform is rescaled per file so its loudest window
 equals 1.0 — best for showing a single track in isolation. When you
 need to compare loudness across multiple tracks (e.g. a music app
 showing several songs side by side), pass
-`WaveformNormalization.absolute` to scale against the maximum 16-bit
-PCM value instead, preserving relative loudness:
+`WaveformNormalization.absolute` to preserve relative loudness across
+files instead:
 
 ```dart
 final waveform = await AudioDecoder.getWaveform(

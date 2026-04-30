@@ -923,8 +923,11 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
         // Scale to 0.0-1.0 according to the requested normalization mode.
         // Samples are signed 16-bit PCM, so the absolute mode divides by Int16.MAX (32767).
         val normalized = when (normalization) {
+            "perFile" -> if (maxRms > 0) waveform.map { it / maxRms } else waveform
             "absolute" -> waveform.map { it / 32767.0 }
-            else -> if (maxRms > 0) waveform.map { it / maxRms } else waveform
+            else -> throw IllegalArgumentException(
+                "Unknown waveform normalization: $normalization"
+            )
         }
 
         // Pad if needed
