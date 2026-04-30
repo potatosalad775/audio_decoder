@@ -1,3 +1,14 @@
+## 0.8.0
+
+* **`WaveformNormalization` option** — opt into absolute amplitude scaling on `getWaveform` / `getWaveformBytes` to preserve loudness differences between tracks (useful for music apps that show several songs side by side).
+  * `WaveformNormalization.perFile` (default) keeps the existing 0.7.x behavior: each waveform is rescaled so its loudest window equals 1.0.
+  * `WaveformNormalization.absolute` divides by the maximum signed 16-bit PCM magnitude (32768), so a quiet recording stays visibly quieter than a loud one.
+  * Implemented across all platforms: Android, iOS/macOS, Linux, Windows, Web.
+* Validate `numberOfSamples` (`> 0`) on the public Dart API before dispatching to the platform.
+* Fix cross-platform build failures (contributed by @navidicted):
+  * **Linux**: add the missing forward `typedef`s for `G_DEFINE_TYPE` so the plugin compiles with GCC 15.2.1.
+  * **Windows**: parenthesize `std::min` / `std::max` to avoid the MSVC `min`/`max` macro clash, cast `MF_SOURCE_READER_MEDIASOURCE` to `DWORD`, include `<cctype>` and `<flutter/encodable_value.h>`, and fix a `std::tolower` data-loss warning.
+
 ## 0.7.4
 
 * **Swift Package Manager support** for iOS and macOS — plugin can now be consumed via SPM in addition to CocoaPods.
