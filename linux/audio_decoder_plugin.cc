@@ -564,7 +564,9 @@ static FlValue* GetWaveform(const std::string& path, int numberOfSamples,
         if (rms > maxRms) maxRms = rms;
     }
 
-    // Samples are signed 16-bit PCM, so absolute mode divides by Int16.MAX (32767).
+    // Samples are signed 16-bit PCM with range [-32768, 32767], so absolute
+    // mode divides by the max magnitude (32768) to keep the result inside
+    // [0.0, 1.0] even when a window is filled with -32768.
     if (normalization != "perFile" && normalization != "absolute") {
         throw std::invalid_argument(
             "Unknown waveform normalization: " + normalization);
@@ -573,7 +575,7 @@ static FlValue* GetWaveform(const std::string& path, int numberOfSamples,
     for (size_t i = 0; i < waveform.size(); i++) {
         double scaled;
         if (useAbsolute) {
-            scaled = waveform[i] / 32767.0;
+            scaled = waveform[i] / 32768.0;
         } else {
             scaled = (maxRms > 0) ? waveform[i] / maxRms : 0.0;
         }
