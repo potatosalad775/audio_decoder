@@ -319,6 +319,44 @@ void main() {
         );
       }
     });
+
+    testWidgets(
+      'absolute normalization preserves cross-file loudness differences',
+      (WidgetTester tester) async {
+        final inputPath = await copyAssetToTemp('test_tone.mp3');
+
+        const sampleCount = 200;
+        final perFile = await AudioDecoder.getWaveform(
+          inputPath,
+          numberOfSamples: sampleCount,
+        );
+        final absolute = await AudioDecoder.getWaveform(
+          inputPath,
+          numberOfSamples: sampleCount,
+          normalization: WaveformNormalization.absolute,
+        );
+
+        expect(absolute.length, sampleCount);
+        for (final sample in absolute) {
+          expect(sample, greaterThanOrEqualTo(0.0));
+          expect(sample, lessThanOrEqualTo(1.0));
+        }
+
+        // perFile is rescaled so its loudest window equals 1.0;
+        // absolute is divided by Int16.MAX, so its peak should be <= the
+        // perFile peak. They should not be identical.
+        final perFilePeak = perFile.reduce((a, b) => a > b ? a : b);
+        final absolutePeak = absolute.reduce((a, b) => a > b ? a : b);
+        expect(absolutePeak, lessThanOrEqualTo(perFilePeak + 1e-9));
+        expect(
+          absolutePeak,
+          lessThan(perFilePeak),
+          reason:
+              'absolute peak should be strictly smaller than perFile peak '
+              'unless the source happens to be at full scale',
+        );
+      },
+    );
   });
 
   // ── 7. Bytes API ────────────────────────────────────────────────────
@@ -441,6 +479,38 @@ void main() {
         expect(sample, lessThanOrEqualTo(1.0));
       }
     });
+
+    testWidgets(
+      'getWaveformBytes with absolute normalization yields lower peak',
+      (WidgetTester tester) async {
+        final mp3Bytes = (await rootBundle.load(
+          'assets/test_tone.mp3',
+        )).buffer.asUint8List();
+
+        const sampleCount = 150;
+        final perFile = await AudioDecoder.getWaveformBytes(
+          mp3Bytes,
+          formatHint: 'mp3',
+          numberOfSamples: sampleCount,
+        );
+        final absolute = await AudioDecoder.getWaveformBytes(
+          mp3Bytes,
+          formatHint: 'mp3',
+          numberOfSamples: sampleCount,
+          normalization: WaveformNormalization.absolute,
+        );
+
+        expect(absolute.length, sampleCount);
+        for (final sample in absolute) {
+          expect(sample, greaterThanOrEqualTo(0.0));
+          expect(sample, lessThanOrEqualTo(1.0));
+        }
+
+        final perFilePeak = perFile.reduce((a, b) => a > b ? a : b);
+        final absolutePeak = absolute.reduce((a, b) => a > b ? a : b);
+        expect(absolutePeak, lessThan(perFilePeak));
+      },
+    );
   });
 
   // ── 8. Error handling ───────────────────────────────────────────────

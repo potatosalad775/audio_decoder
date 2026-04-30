@@ -19,7 +19,7 @@
 #include <functional>
 #include <cmath>
 #include <algorithm>
-#include <cctype> 
+#include <cctype>
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
@@ -221,12 +221,15 @@ void AudioDecoderPlugin::HandleMethodCall(
         }
         std::string path = std::get<std::string>(pathIt->second);
         int numberOfSamples = std::get<int32_t>(samplesIt->second);
+        std::string normalization = "perFile";
+        auto normIt = args->find(flutter::EncodableValue("normalization"));
+        if (normIt != args->end()) normalization = std::get<std::string>(normIt->second);
 
         auto shared_result = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
             std::move(result));
-        std::thread([this, path, numberOfSamples, shared_result]() {
+        std::thread([this, path, numberOfSamples, normalization, shared_result]() {
             try {
-                auto waveform = GetWaveform(path, numberOfSamples);
+                auto waveform = GetWaveform(path, numberOfSamples, normalization);
                 shared_result->Success(flutter::EncodableValue(waveform));
             } catch (const std::exception& e) {
                 shared_result->Error("WAVEFORM_ERROR", e.what());
@@ -408,14 +411,17 @@ void AudioDecoderPlugin::HandleMethodCall(
         auto inputData = std::get<std::vector<uint8_t>>(dataIt->second);
         std::string formatHint = std::get<std::string>(hintIt->second);
         int numberOfSamples = std::get<int32_t>(samplesIt->second);
+        std::string normalization = "perFile";
+        auto normIt = args->find(flutter::EncodableValue("normalization"));
+        if (normIt != args->end()) normalization = std::get<std::string>(normIt->second);
 
         auto shared_result = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
             std::move(result));
-        std::thread([this, inputData = std::move(inputData), formatHint, numberOfSamples, shared_result]() {
+        std::thread([this, inputData = std::move(inputData), formatHint, numberOfSamples, normalization, shared_result]() {
             try {
                 std::string tempInput = WriteTempFile(inputData, formatHint);
                 try {
-                    auto waveform = GetWaveform(tempInput, numberOfSamples);
+                    auto waveform = GetWaveform(tempInput, numberOfSamples, normalization);
                     DeleteFileW(Utf8ToWide(tempInput).c_str());
                     shared_result->Success(flutter::EncodableValue(waveform));
                 } catch (...) {
@@ -847,9 +853,9 @@ std::string AudioDecoderPlugin::TrimAudio(
 
     std::string ext = outputPath.substr(outputPath.find_last_of('.') + 1);
     std::transform(ext.begin(), ext.end(), ext.begin(),
-		    [](unsigned char c) {
-		    	return static_cast<char>(std::tolower(c));
-		});
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
 
     if (ext == "m4a") {
         // M4A trimming uses DecodeToPcm (full buffering) because
@@ -940,7 +946,8 @@ std::string AudioDecoderPlugin::TrimAudio(
 }
 
 flutter::EncodableList AudioDecoderPlugin::GetWaveform(
-    const std::string& path, int numberOfSamples) {
+    const std::string& path, int numberOfSamples,
+    const std::string& normalization) {
 
     auto pcm = DecodeToPcm(path);
 
@@ -974,10 +981,17 @@ flutter::EncodableList AudioDecoderPlugin::GetWaveform(
         if (rms > maxRms) maxRms = rms;
     }
 
+    // Samples are signed 16-bit PCM, so absolute mode divides by Int16.MAX (32767).
+    const bool useAbsolute = (normalization == "absolute");
     flutter::EncodableList result;
     for (size_t i = 0; i < waveform.size(); i++) {
-        double normalized = (maxRms > 0) ? waveform[i] / maxRms : 0.0;
-        result.push_back(flutter::EncodableValue(normalized));
+        double scaled;
+        if (useAbsolute) {
+            scaled = waveform[i] / 32767.0;
+        } else {
+            scaled = (maxRms > 0) ? waveform[i] / maxRms : 0.0;
+        }
+        result.push_back(flutter::EncodableValue(scaled));
     }
 
     while (static_cast<int>(result.size()) < numberOfSamples) {

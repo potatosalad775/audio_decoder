@@ -8,6 +8,7 @@ import 'package:web/web.dart' as web;
 import 'audio_conversion_exception.dart';
 import 'audio_decoder_platform_interface.dart';
 import 'audio_info.dart';
+import 'waveform_normalization.dart';
 
 /// Standard RIFF/WAV header size in bytes (no extra chunks).
 const int _wavHeaderSize = 44;
@@ -48,7 +49,11 @@ final class AudioDecoderWeb extends AudioDecoderPlatform {
   }
 
   @override
-  Future<List<double>> getWaveform(String path, int numberOfSamples) {
+  Future<List<double>> getWaveform(
+    String path,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) {
     throw UnsupportedError('File-based operations are not supported on web. Use getWaveformBytes instead.');
   }
 
@@ -283,7 +288,12 @@ final class AudioDecoderWeb extends AudioDecoderPlatform {
   }
 
   @override
-  Future<List<double>> getWaveformBytes(Uint8List inputData, String formatHint, int numberOfSamples) async {
+  Future<List<double>> getWaveformBytes(
+    Uint8List inputData,
+    String formatHint,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) async {
     try {
       final buffer = await _decodeAudioData(inputData);
       final channelData = buffer.getChannelData(0).toDart;
@@ -312,7 +322,16 @@ final class AudioDecoderWeb extends AudioDecoderPlatform {
         if (rms > maxRms) maxRms = rms;
       }
 
-      final result = waveform.map((rms) => maxRms > 0 ? rms / maxRms : 0.0).toList();
+      // Web Audio API delivers samples already in [-1.0, 1.0], so absolute
+      // normalization is the raw RMS value. Per-file normalization scales by
+      // the loudest window in this file.
+      final List<double> result;
+      switch (normalization) {
+        case WaveformNormalization.perFile:
+          result = waveform.map((rms) => maxRms > 0 ? rms / maxRms : 0.0).toList();
+        case WaveformNormalization.absolute:
+          result = List<double>.from(waveform);
+      }
 
       while (result.length < numberOfSamples) {
         result.add(0.0);

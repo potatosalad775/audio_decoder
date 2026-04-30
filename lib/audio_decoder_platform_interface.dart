@@ -4,6 +4,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'audio_decoder_method_channel.dart';
 import 'audio_info.dart';
+import 'waveform_normalization.dart';
 
 /// The interface that platform-specific implementations of audio_decoder must
 /// extend.
@@ -44,7 +45,11 @@ abstract base class AudioDecoderPlatform extends PlatformInterface {
     throw UnimplementedError('trimAudio() has not been implemented.');
   }
 
-  Future<List<double>> getWaveform(String path, int numberOfSamples) {
+  Future<List<double>> getWaveform(
+    String path,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) {
     throw UnimplementedError('getWaveform() has not been implemented.');
   }
 
@@ -77,7 +82,12 @@ abstract base class AudioDecoderPlatform extends PlatformInterface {
     throw UnimplementedError('trimAudioBytes() has not been implemented.');
   }
 
-  Future<List<double>> getWaveformBytes(Uint8List inputData, String formatHint, int numberOfSamples) {
+  Future<List<double>> getWaveformBytes(
+    Uint8List inputData,
+    String formatHint,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) {
     throw UnimplementedError('getWaveformBytes() has not been implemented.');
   }
 }

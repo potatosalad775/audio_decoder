@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:audio_decoder/audio_decoder_method_channel.dart';
 import 'package:audio_decoder/audio_conversion_exception.dart';
+import 'package:audio_decoder/waveform_normalization.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -155,6 +156,7 @@ void main() {
       expect(methodCall.arguments, {
         'path': '/input/test.mp3',
         'numberOfSamples': 50,
+        'normalization': 'perFile',
       });
       return List<double>.filled(50, 0.5);
     });
@@ -162,6 +164,22 @@ void main() {
     final waveform = await platform.getWaveform('/input/test.mp3', 50);
     expect(waveform.length, 50);
     expect(waveform.first, 0.5);
+  });
+
+  test('getWaveform sends absolute normalization when requested', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      MethodCall methodCall,
+    ) async {
+      expect(methodCall.method, 'getWaveform');
+      expect(methodCall.arguments['normalization'], 'absolute');
+      return List<double>.filled(50, 0.5);
+    });
+
+    await platform.getWaveform(
+      '/input/test.mp3',
+      50,
+      normalization: WaveformNormalization.absolute,
+    );
   });
 
   test('convertToWav throws when native returns null', () async {
@@ -280,6 +298,7 @@ void main() {
         expect(methodCall.method, 'getWaveformBytes');
         expect(methodCall.arguments['formatHint'], 'mp3');
         expect(methodCall.arguments['numberOfSamples'], 50);
+        expect(methodCall.arguments['normalization'], 'perFile');
         expect(methodCall.arguments['inputData'], isA<Uint8List>());
         return List<double>.filled(50, 0.7);
       });
@@ -287,6 +306,22 @@ void main() {
       final waveform = await platform.getWaveformBytes(testInput, 'mp3', 50);
       expect(waveform.length, 50);
       expect(waveform.first, 0.7);
+    });
+
+    test('getWaveformBytes sends absolute normalization when requested', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        MethodCall methodCall,
+      ) async {
+        expect(methodCall.arguments['normalization'], 'absolute');
+        return List<double>.filled(50, 0.7);
+      });
+
+      await platform.getWaveformBytes(
+        testInput,
+        'mp3',
+        50,
+        normalization: WaveformNormalization.absolute,
+      );
     });
 
     test('convertToWavBytes throws AudioConversionException on PlatformException', () async {

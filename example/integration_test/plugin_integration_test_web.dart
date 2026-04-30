@@ -147,6 +147,36 @@ void main() {
         expect(sample, lessThanOrEqualTo(1.0));
       }
     });
+
+    testWidgets(
+      'absolute normalization yields lower peak than perFile',
+      (WidgetTester tester) async {
+        final mp3Bytes = await loadAsset('test_tone.mp3');
+
+        const sampleCount = 150;
+        final perFile = await AudioDecoder.getWaveformBytes(
+          mp3Bytes,
+          formatHint: 'mp3',
+          numberOfSamples: sampleCount,
+        );
+        final absolute = await AudioDecoder.getWaveformBytes(
+          mp3Bytes,
+          formatHint: 'mp3',
+          numberOfSamples: sampleCount,
+          normalization: WaveformNormalization.absolute,
+        );
+
+        expect(absolute.length, sampleCount);
+        for (final sample in absolute) {
+          expect(sample, greaterThanOrEqualTo(0.0));
+          expect(sample, lessThanOrEqualTo(1.0));
+        }
+
+        final perFilePeak = perFile.reduce((a, b) => a > b ? a : b);
+        final absolutePeak = absolute.reduce((a, b) => a > b ? a : b);
+        expect(absolutePeak, lessThan(perFilePeak));
+      },
+    );
   });
 
   // ── Error handling ──────────────────────────────────────────────────

@@ -528,7 +528,8 @@ static std::string TrimAudio(const std::string& inputPath,
     return outputPath;
 }
 
-static FlValue* GetWaveform(const std::string& path, int numberOfSamples) {
+static FlValue* GetWaveform(const std::string& path, int numberOfSamples,
+                            const std::string& normalization = "perFile") {
     auto pcm = DecodeToPcm(path);
 
     FlValue* list = fl_value_new_list();
@@ -563,9 +564,16 @@ static FlValue* GetWaveform(const std::string& path, int numberOfSamples) {
         if (rms > maxRms) maxRms = rms;
     }
 
+    // Samples are signed 16-bit PCM, so absolute mode divides by Int16.MAX (32767).
+    const bool useAbsolute = (normalization == "absolute");
     for (size_t i = 0; i < waveform.size(); i++) {
-        double normalized = (maxRms > 0) ? waveform[i] / maxRms : 0.0;
-        fl_value_append_take(list, fl_value_new_float(normalized));
+        double scaled;
+        if (useAbsolute) {
+            scaled = waveform[i] / 32767.0;
+        } else {
+            scaled = (maxRms > 0) ? waveform[i] / maxRms : 0.0;
+        }
+        fl_value_append_take(list, fl_value_new_float(scaled));
     }
 
     while (fl_value_get_length(list) < static_cast<size_t>(numberOfSamples)) {
@@ -754,11 +762,13 @@ static void handle_method_call(AudioDecoderPlugin* self,
         }
         std::string path = fl_value_get_string(pathVal);
         int numberOfSamples = static_cast<int>(fl_value_get_int(samplesVal));
+        FlValue* normVal = fl_value_lookup_string(args, "normalization");
+        std::string normalization = normVal ? fl_value_get_string(normVal) : "perFile";
 
         g_object_ref(method_call);
-        std::thread([method_call, path, numberOfSamples]() {
+        std::thread([method_call, path, numberOfSamples, normalization]() {
             try {
-                g_autoptr(FlValue) waveform = GetWaveform(path, numberOfSamples);
+                g_autoptr(FlValue) waveform = GetWaveform(path, numberOfSamples, normalization);
                 send_success(method_call, waveform);
             } catch (const std::exception& e) {
                 send_error(method_call, "WAVEFORM_ERROR", e.what());
@@ -974,15 +984,17 @@ static void handle_method_call(AudioDecoderPlugin* self,
         std::vector<uint8_t> inputData(rawData, rawData + dataLen);
         std::string formatHint = fl_value_get_string(hintVal);
         int numberOfSamples = static_cast<int>(fl_value_get_int(samplesVal));
+        FlValue* normVal = fl_value_lookup_string(args, "normalization");
+        std::string normalization = normVal ? fl_value_get_string(normVal) : "perFile";
 
         g_object_ref(method_call);
         std::thread([method_call, inputData = std::move(inputData), formatHint,
-                     numberOfSamples]() {
+                     numberOfSamples, normalization]() {
             try {
                 std::string tempInput = WriteTempFile(inputData, formatHint);
                 try {
                     g_autoptr(FlValue) waveform =
-                        GetWaveform(tempInput, numberOfSamples);
+                        GetWaveform(tempInput, numberOfSamples, normalization);
                     std::remove(tempInput.c_str());
                     send_success(method_call, waveform);
                 } catch (...) {
