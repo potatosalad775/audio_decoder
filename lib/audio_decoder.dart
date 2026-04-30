@@ -95,6 +95,7 @@ final class AudioDecoder {
     int numberOfSamples = 100,
     WaveformNormalization normalization = WaveformNormalization.perFile,
   }) {
+    _validateNumberOfSamples(numberOfSamples);
     return AudioDecoderPlatform.instance.getWaveform(
       path,
       numberOfSamples,
@@ -240,11 +241,26 @@ final class AudioDecoder {
     int numberOfSamples = 100,
     WaveformNormalization normalization = WaveformNormalization.perFile,
   }) {
+    _validateNumberOfSamples(numberOfSamples);
     return AudioDecoderPlatform.instance.getWaveformBytes(
       inputData,
       formatHint,
       numberOfSamples,
       normalization: normalization,
     );
+  }
+
+  /// Validates [numberOfSamples] for `getWaveform` / `getWaveformBytes`.
+  ///
+  /// Most native implementations divide window sizes by this value, so 0 or
+  /// a negative number would crash or throw deep in platform code.
+  static void _validateNumberOfSamples(int numberOfSamples) {
+    if (numberOfSamples <= 0) {
+      throw ArgumentError.value(
+        numberOfSamples,
+        'numberOfSamples',
+        'Must be positive',
+      );
+    }
   }
 }

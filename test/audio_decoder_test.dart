@@ -285,6 +285,42 @@ void main() {
       AudioDecoderPlatform.instance = fakePlatform;
     });
 
+    test('getWaveform rejects zero numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveform('/in.mp3', numberOfSamples: 0),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveform rejects negative numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveform('/in.mp3', numberOfSamples: -10),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveformBytes rejects zero numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveformBytes(
+          Uint8List(1),
+          formatHint: 'mp3',
+          numberOfSamples: 0,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveformBytes rejects negative numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveformBytes(
+          Uint8List(1),
+          formatHint: 'mp3',
+          numberOfSamples: -1,
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('convertToWav rejects zero sampleRate', () {
       expect(
         () => AudioDecoder.convertToWav('/in.mp3', '/out.wav', sampleRate: 0),

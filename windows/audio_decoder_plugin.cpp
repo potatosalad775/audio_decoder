@@ -20,6 +20,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
