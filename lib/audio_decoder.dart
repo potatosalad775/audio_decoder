@@ -2,9 +2,11 @@ import 'dart:typed_data';
 
 import 'audio_decoder_platform_interface.dart';
 import 'audio_info.dart';
+import 'waveform_normalization.dart';
 
 export 'audio_conversion_exception.dart';
 export 'audio_info.dart';
+export 'waveform_normalization.dart';
 
 /// A lightweight audio decoder and converter using native platform APIs.
 ///
@@ -78,15 +80,27 @@ final class AudioDecoder {
 
   /// Extracts waveform amplitude data from the audio file.
   ///
-  /// Returns a list of [numberOfSamples] normalized amplitude values (0.0–1.0).
+  /// Returns a list of [numberOfSamples] amplitude values in the range 0.0–1.0.
   /// Useful for rendering waveform visualizations.
+  ///
+  /// [normalization] controls how the amplitudes are scaled. The default
+  /// [WaveformNormalization.perFile] rescales each waveform so its loudest
+  /// window equals 1.0 — best for single-track UI. Use
+  /// [WaveformNormalization.absolute] when you want to compare loudness across
+  /// multiple tracks (a quiet recording will visibly look quieter).
   ///
   /// Throws [AudioConversionException] if the file cannot be decoded.
   static Future<List<double>> getWaveform(
     String path, {
     int numberOfSamples = 100,
+    WaveformNormalization normalization = WaveformNormalization.perFile,
   }) {
-    return AudioDecoderPlatform.instance.getWaveform(path, numberOfSamples);
+    _validateNumberOfSamples(numberOfSamples);
+    return AudioDecoderPlatform.instance.getWaveform(
+      path,
+      numberOfSamples,
+      normalization: normalization,
+    );
   }
 
   /// Validates [sampleRate], [channels], and [bitDepth] parameters
@@ -214,14 +228,39 @@ final class AudioDecoder {
   ///
   /// [inputData] is the raw bytes of the source audio file.
   /// [formatHint] indicates the input format (e.g., 'mp3', 'm4a').
-  /// Returns a list of [numberOfSamples] normalized amplitude values (0.0–1.0).
+  /// Returns a list of [numberOfSamples] amplitude values in the range 0.0–1.0.
+  ///
+  /// [normalization] controls how the amplitudes are scaled. See [getWaveform]
+  /// for details on the available modes. Defaults to
+  /// [WaveformNormalization.perFile].
   ///
   /// Throws [AudioConversionException] if the data cannot be decoded.
   static Future<List<double>> getWaveformBytes(
     Uint8List inputData, {
     required String formatHint,
     int numberOfSamples = 100,
+    WaveformNormalization normalization = WaveformNormalization.perFile,
   }) {
-    return AudioDecoderPlatform.instance.getWaveformBytes(inputData, formatHint, numberOfSamples);
+    _validateNumberOfSamples(numberOfSamples);
+    return AudioDecoderPlatform.instance.getWaveformBytes(
+      inputData,
+      formatHint,
+      numberOfSamples,
+      normalization: normalization,
+    );
+  }
+
+  /// Validates [numberOfSamples] for `getWaveform` / `getWaveformBytes`.
+  ///
+  /// Most native implementations divide window sizes by this value, so 0 or
+  /// a negative number would crash or throw deep in platform code.
+  static void _validateNumberOfSamples(int numberOfSamples) {
+    if (numberOfSamples <= 0) {
+      throw ArgumentError.value(
+        numberOfSamples,
+        'numberOfSamples',
+        'Must be positive',
+      );
+    }
   }
 }

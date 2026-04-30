@@ -92,7 +92,8 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
                 ))
                 return
             }
-            getWaveform(path: path, numberOfSamples: numberOfSamples, result: result)
+            let normalization = args["normalization"] as? String ?? "perFile"
+            getWaveform(path: path, numberOfSamples: numberOfSamples, normalization: normalization, result: result)
         case "convertToWavBytes":
             guard let args = call.arguments as? [String: Any],
                   let inputData = args["inputData"] as? FlutterStandardTypedData,
@@ -140,7 +141,8 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "INVALID_ARGUMENTS", message: "inputData, formatHint and numberOfSamples are required", details: nil))
                 return
             }
-            getWaveformBytes(inputData: inputData, formatHint: formatHint, numberOfSamples: numberOfSamples, result: result)
+            let normalization = args["normalization"] as? String ?? "perFile"
+            getWaveformBytes(inputData: inputData, formatHint: formatHint, numberOfSamples: numberOfSamples, normalization: normalization, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -484,10 +486,10 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
 
     // MARK: - Get Waveform
 
-    private func getWaveform(path: String, numberOfSamples: Int, result: @escaping FlutterResult) {
+    private func getWaveform(path: String, numberOfSamples: Int, normalization: String, result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let waveform = try self.performGetWaveform(path: path, numberOfSamples: numberOfSamples)
+                let waveform = try self.performGetWaveform(path: path, numberOfSamples: numberOfSamples, normalization: normalization)
                 DispatchQueue.main.async {
                     result(waveform)
                 }
@@ -503,7 +505,17 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    private func performGetWaveform(path: String, numberOfSamples: Int) throws -> [Double] {
+    private func performGetWaveform(path: String, numberOfSamples: Int, normalization: String = "perFile") throws -> [Double] {
+        // Fail fast on an invalid normalization mode before opening the asset
+        // and decoding the PCM samples.
+        guard normalization == "perFile" || normalization == "absolute" else {
+            throw NSError(
+                domain: "AudioDecoder", code: 43,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Unknown waveform normalization: \(normalization)"]
+            )
+        }
+
         let url = URL(fileURLWithPath: path)
         let asset = AVURLAsset(url: url)
 
@@ -575,8 +587,14 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
             if rms > maxRms { maxRms = rms }
         }
 
-        // Normalize to 0.0-1.0
-        if maxRms > 0 {
+        // Scale to 0.0-1.0 according to the requested normalization mode.
+        // Samples are signed 16-bit PCM with range [-32768, 32767], so the
+        // absolute mode divides by the max magnitude (32768) to keep the
+        // result inside [0.0, 1.0] even when a window is filled with -32768.
+        // (normalization is already validated up front.)
+        if normalization == "absolute" {
+            waveform = waveform.map { $0 / 32768.0 }
+        } else if maxRms > 0 {
             waveform = waveform.map { $0 / maxRms }
         }
 
@@ -696,14 +714,14 @@ public class AudioDecoderPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    private func getWaveformBytes(inputData: FlutterStandardTypedData, formatHint: String, numberOfSamples: Int, result: @escaping FlutterResult) {
+    private func getWaveformBytes(inputData: FlutterStandardTypedData, formatHint: String, numberOfSamples: Int, normalization: String, result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let tempInputURL = try self.writeTempInput(data: inputData, formatHint: formatHint)
                 defer {
                     try? FileManager.default.removeItem(at: tempInputURL)
                 }
-                let waveform = try self.performGetWaveform(path: tempInputURL.path, numberOfSamples: numberOfSamples)
+                let waveform = try self.performGetWaveform(path: tempInputURL.path, numberOfSamples: numberOfSamples, normalization: normalization)
                 DispatchQueue.main.async {
                     result(waveform)
                 }

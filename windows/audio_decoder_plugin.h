@@ -40,7 +40,8 @@ class AudioDecoderPlugin : public flutter::Plugin {
                         const std::string& outputPath,
                         int64_t startMs, int64_t endMs);
   flutter::EncodableList GetWaveform(const std::string& path,
-                                     int numberOfSamples);
+                                     int numberOfSamples,
+                                     const std::string& normalization = "perFile");
   void WriteWavHeader(std::ostream& file, uint32_t dataSize,
                       uint32_t sampleRate, uint16_t channels,
                       uint16_t bitsPerSample);

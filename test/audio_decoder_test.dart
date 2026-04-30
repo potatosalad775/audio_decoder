@@ -29,8 +29,17 @@ final class MockAudioDecoderPlatform extends AudioDecoderPlatform with MockPlatf
   Future<String> trimAudio(String inputPath, String outputPath, Duration start, Duration end) =>
       Future.value(outputPath);
 
+  WaveformNormalization? lastNormalization;
+
   @override
-  Future<List<double>> getWaveform(String path, int numberOfSamples) => Future.value(List.filled(numberOfSamples, 0.5));
+  Future<List<double>> getWaveform(
+    String path,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) {
+    lastNormalization = normalization;
+    return Future.value(List.filled(numberOfSamples, 0.5));
+  }
 
   @override
   Future<Uint8List> convertToWavBytes(
@@ -71,8 +80,15 @@ final class MockAudioDecoderPlatform extends AudioDecoderPlatform with MockPlatf
   }) => Future.value(Uint8List.fromList([0x52, 0x49, 0x46, 0x46]));
 
   @override
-  Future<List<double>> getWaveformBytes(Uint8List inputData, String formatHint, int numberOfSamples) =>
-      Future.value(List.filled(numberOfSamples, 0.7));
+  Future<List<double>> getWaveformBytes(
+    Uint8List inputData,
+    String formatHint,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) {
+    lastNormalization = normalization;
+    return Future.value(List.filled(numberOfSamples, 0.7));
+  }
 }
 
 void main() {
@@ -136,6 +152,27 @@ void main() {
     final waveform = await AudioDecoder.getWaveform('/path/to/test.mp3', numberOfSamples: 50);
     expect(waveform.length, 50);
     expect(waveform.first, 0.5);
+    expect(fakePlatform.lastNormalization, WaveformNormalization.perFile);
+  });
+
+  test('WaveformNormalization wireValue is the contract with native side', () {
+    // The wireValue strings are matched literally inside the native
+    // backends (Kotlin/Swift/C++). Renaming or changing them silently
+    // breaks all platforms, so this test pins them as a contract.
+    expect(WaveformNormalization.perFile.wireValue, 'perFile');
+    expect(WaveformNormalization.absolute.wireValue, 'absolute');
+  });
+
+  test('getWaveform forwards absolute normalization to platform', () async {
+    MockAudioDecoderPlatform fakePlatform = MockAudioDecoderPlatform();
+    AudioDecoderPlatform.instance = fakePlatform;
+
+    await AudioDecoder.getWaveform(
+      '/path/to/test.mp3',
+      numberOfSamples: 50,
+      normalization: WaveformNormalization.absolute,
+    );
+    expect(fakePlatform.lastNormalization, WaveformNormalization.absolute);
   });
 
   group('needsConversion', () {
@@ -225,6 +262,18 @@ void main() {
       );
       expect(waveform.length, 30);
       expect(waveform.first, 0.7);
+      expect(fakePlatform.lastNormalization, WaveformNormalization.perFile);
+    });
+
+    test('getWaveformBytes forwards absolute normalization to platform', () async {
+      final input = Uint8List.fromList([1, 2, 3]);
+      await AudioDecoder.getWaveformBytes(
+        input,
+        formatHint: 'mp3',
+        numberOfSamples: 30,
+        normalization: WaveformNormalization.absolute,
+      );
+      expect(fakePlatform.lastNormalization, WaveformNormalization.absolute);
     });
   });
 
@@ -234,6 +283,42 @@ void main() {
     setUp(() {
       fakePlatform = MockAudioDecoderPlatform();
       AudioDecoderPlatform.instance = fakePlatform;
+    });
+
+    test('getWaveform rejects zero numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveform('/in.mp3', numberOfSamples: 0),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveform rejects negative numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveform('/in.mp3', numberOfSamples: -10),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveformBytes rejects zero numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveformBytes(
+          Uint8List(1),
+          formatHint: 'mp3',
+          numberOfSamples: 0,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('getWaveformBytes rejects negative numberOfSamples', () {
+      expect(
+        () => AudioDecoder.getWaveformBytes(
+          Uint8List(1),
+          formatHint: 'mp3',
+          numberOfSamples: -1,
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('convertToWav rejects zero sampleRate', () {

@@ -138,13 +138,14 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
             "getWaveform" -> {
                 val path = call.argument<String>("path")
                 val numberOfSamples = call.argument<Int>("numberOfSamples")
+                val normalization = call.argument<String>("normalization") ?: "perFile"
                 if (path == null || numberOfSamples == null) {
                     result.error("INVALID_ARGUMENTS", "path and numberOfSamples are required", null)
                     return
                 }
                 thread {
                     try {
-                        val waveform = performGetWaveform(path, numberOfSamples)
+                        val waveform = performGetWaveform(path, numberOfSamples, normalization)
                         Handler(Looper.getMainLooper()).post {
                             result.success(waveform)
                         }
@@ -271,6 +272,7 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
                 val inputData = call.argument<ByteArray>("inputData")
                 val formatHint = call.argument<String>("formatHint")
                 val numberOfSamples = call.argument<Int>("numberOfSamples")
+                val normalization = call.argument<String>("normalization") ?: "perFile"
                 if (inputData == null || formatHint == null || numberOfSamples == null) {
                     result.error("INVALID_ARGUMENTS", "inputData, formatHint and numberOfSamples are required", null)
                     return
@@ -279,7 +281,7 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
                     try {
                         val tempInput = writeTempInput(inputData, formatHint)
                         try {
-                            val waveform = performGetWaveform(tempInput.absolutePath, numberOfSamples)
+                            val waveform = performGetWaveform(tempInput.absolutePath, numberOfSamples, normalization)
                             Handler(Looper.getMainLooper()).post { result.success(waveform) }
                         } finally {
                             tempInput.delete()
@@ -822,7 +824,19 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
 
     // region Get Waveform
 
-    private fun performGetWaveform(path: String, numberOfSamples: Int): List<Double> {
+    private fun performGetWaveform(
+        path: String,
+        numberOfSamples: Int,
+        normalization: String = "perFile",
+    ): List<Double> {
+        // Fail fast on an invalid normalization mode before setting up the
+        // MediaExtractor and decoding the PCM samples.
+        if (normalization != "perFile" && normalization != "absolute") {
+            throw IllegalArgumentException(
+                "Unknown waveform normalization: $normalization"
+            )
+        }
+
         val extractor = MediaExtractor()
         extractor.setDataSource(path)
 
@@ -914,8 +928,14 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
             if (rms > maxRms) maxRms = rms
         }
 
-        // Normalize to 0.0-1.0
-        val normalized = if (maxRms > 0) {
+        // Scale to 0.0-1.0 according to the requested normalization mode.
+        // Samples are signed 16-bit PCM with range [-32768, 32767], so the
+        // absolute mode divides by the max magnitude (32768) to keep the
+        // result inside [0.0, 1.0] even when a window is filled with -32768.
+        // (normalization is already validated up front.)
+        val normalized = if (normalization == "absolute") {
+            waveform.map { it / 32768.0 }
+        } else if (maxRms > 0) {
             waveform.map { it / maxRms }
         } else {
             waveform

@@ -192,25 +192,34 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  Future<void> _getWaveform(String assetPath) async {
+  Future<void> _getWaveform(
+    String assetPath, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) async {
     if (_busy) return;
 
     setState(() {
       _busy = true;
       _waveform = null;
       _statusType = _StatusType.loading;
-      _status = 'Extracting waveform...';
+      _status = 'Extracting waveform (${normalization.name})...';
     });
 
     try {
       final inputPath = await _copyAssetToTemp(assetPath);
-      // Extract normalized amplitude data (0.0-1.0) for waveform visualization
-      final waveform = await AudioDecoder.getWaveform(inputPath, numberOfSamples: 50);
+      final waveform = await AudioDecoder.getWaveform(
+        inputPath,
+        numberOfSamples: 50,
+        normalization: normalization,
+      );
 
+      final peak = waveform.reduce((a, b) => a > b ? a : b);
       setState(() {
         _waveform = waveform;
         _statusType = _StatusType.success;
-        _status = 'Waveform (${waveform.length} samples)';
+        _status =
+            'Waveform [${normalization.name}] '
+            '(${waveform.length} samples, peak ${peak.toStringAsFixed(3)})';
       });
     } on AudioConversionException catch (e) {
       setState(() {
@@ -376,7 +385,10 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  Future<void> _getWaveformBytes(String assetPath) async {
+  Future<void> _getWaveformBytes(
+    String assetPath, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) async {
     if (_busy) return;
 
     final ext = assetPath.split('.').last;
@@ -385,18 +397,25 @@ class _MyAppState extends State<MyApp> {
       _busy = true;
       _waveform = null;
       _statusType = _StatusType.loading;
-      _status = 'Extracting waveform (bytes API)...';
+      _status = 'Extracting waveform (bytes API, ${normalization.name})...';
     });
 
     try {
       final inputBytes = await _loadAssetBytes(assetPath);
-      // Extract waveform data from in-memory audio bytes
-      final waveform = await AudioDecoder.getWaveformBytes(inputBytes, formatHint: ext, numberOfSamples: 50);
+      final waveform = await AudioDecoder.getWaveformBytes(
+        inputBytes,
+        formatHint: ext,
+        numberOfSamples: 50,
+        normalization: normalization,
+      );
 
+      final peak = waveform.reduce((a, b) => a > b ? a : b);
       setState(() {
         _waveform = waveform;
         _statusType = _StatusType.success;
-        _status = 'Bytes API: Waveform (${waveform.length} samples)';
+        _status =
+            'Bytes API: Waveform [${normalization.name}] '
+            '(${waveform.length} samples, peak ${peak.toStringAsFixed(3)})';
       });
     } on AudioConversionException catch (e) {
       setState(() {
@@ -567,6 +586,16 @@ class _MyAppState extends State<MyApp> {
                           icon: Icons.graphic_eq,
                           onPressed: _busy ? null : () => _getWaveform(_kTestToneMp3),
                         ),
+                        _actionButton(
+                          label: 'Get Waveform — absolute (MP3)',
+                          icon: Icons.equalizer,
+                          onPressed: _busy
+                              ? null
+                              : () => _getWaveform(
+                                  _kTestToneMp3,
+                                  normalization: WaveformNormalization.absolute,
+                                ),
+                        ),
                       ],
                     ),
                     _sectionCard(
@@ -608,6 +637,16 @@ class _MyAppState extends State<MyApp> {
                           label: 'Get Waveform (bytes)',
                           icon: Icons.graphic_eq,
                           onPressed: _busy ? null : () => _getWaveformBytes(_kTestToneMp3),
+                        ),
+                        _actionButton(
+                          label: 'Get Waveform — absolute (bytes)',
+                          icon: Icons.equalizer,
+                          onPressed: _busy
+                              ? null
+                              : () => _getWaveformBytes(
+                                  _kTestToneMp3,
+                                  normalization: WaveformNormalization.absolute,
+                                ),
                         ),
                       ],
                     ),

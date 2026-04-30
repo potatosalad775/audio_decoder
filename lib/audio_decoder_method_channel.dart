@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'audio_conversion_exception.dart';
 import 'audio_decoder_platform_interface.dart';
 import 'audio_info.dart';
+import 'waveform_normalization.dart';
 
 /// Platform implementation of audio_decoder that uses a method channel to
 /// communicate with native platform code.
@@ -112,11 +113,19 @@ final class MethodChannelAudioDecoder extends AudioDecoderPlatform {
   }
 
   @override
-  Future<List<double>> getWaveform(String path, int numberOfSamples) async {
+  Future<List<double>> getWaveform(
+    String path,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) async {
     try {
       final result = await methodChannel.invokeListMethod<double>(
         'getWaveform',
-        {'path': path, 'numberOfSamples': numberOfSamples},
+        {
+          'path': path,
+          'numberOfSamples': numberOfSamples,
+          'normalization': normalization.wireValue,
+        },
       );
       if (result == null) {
         throw AudioConversionException('Native getWaveform returned null');
@@ -240,11 +249,21 @@ final class MethodChannelAudioDecoder extends AudioDecoderPlatform {
   }
 
   @override
-  Future<List<double>> getWaveformBytes(Uint8List inputData, String formatHint, int numberOfSamples) async {
+  Future<List<double>> getWaveformBytes(
+    Uint8List inputData,
+    String formatHint,
+    int numberOfSamples, {
+    WaveformNormalization normalization = WaveformNormalization.perFile,
+  }) async {
     try {
       final result = await methodChannel.invokeListMethod<double>(
         'getWaveformBytes',
-        {'inputData': inputData, 'formatHint': formatHint, 'numberOfSamples': numberOfSamples},
+        {
+          'inputData': inputData,
+          'formatHint': formatHint,
+          'numberOfSamples': numberOfSamples,
+          'normalization': normalization.wireValue,
+        },
       );
       if (result == null) {
         throw AudioConversionException('Native getWaveform returned null');
