@@ -125,6 +125,21 @@ final waveform = await AudioDecoder.getWaveform(
 // waveform = [0.12, 0.45, 0.87, 0.23, ...]
 ```
 
+By default each waveform is rescaled per file so its loudest window
+equals 1.0 — best for showing a single track in isolation. When you
+need to compare loudness across multiple tracks (e.g. a music app
+showing several songs side by side), pass
+`WaveformNormalization.absolute` to scale against the maximum 16-bit
+PCM value instead, preserving relative loudness:
+
+```dart
+final waveform = await AudioDecoder.getWaveform(
+  '/path/to/song.mp3',
+  numberOfSamples: 100,
+  normalization: WaveformNormalization.absolute,
+);
+```
+
 ### Bytes API (in-memory)
 
 Work directly with audio bytes — no file paths needed. Ideal for network responses, Flutter assets, or other in-memory sources.
@@ -171,7 +186,7 @@ final trimmed = await AudioDecoder.trimAudioBytes(
   end: Duration(seconds: 30),
 );
 
-// Extract waveform from bytes
+// Extract waveform from bytes (also accepts an optional `normalization` parameter)
 final waveform = await AudioDecoder.getWaveformBytes(
   mp3Bytes,
   formatHint: 'mp3',
