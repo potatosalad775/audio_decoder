@@ -185,8 +185,10 @@ void main() {
   test('getWaveform converts native PlatformException to AudioConversionException', () async {
     // Exercises the error path the native side uses for any failure during
     // waveform extraction, including the explicit throw on an unrecognized
-    // normalization value (defence-in-depth tak die niet via de publieke
-    // Dart-API bereikt kan worden).
+    // normalization value. That defense-in-depth branch is unreachable
+    // through the enum-typed public Dart API, but stays reachable from
+    // direct method-channel callers, so the conversion contract still
+    // needs coverage.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
       MethodCall methodCall,
     ) async {

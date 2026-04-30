@@ -769,7 +769,10 @@ static void handle_method_call(AudioDecoderPlugin* self,
         std::string path = fl_value_get_string(pathVal);
         int numberOfSamples = static_cast<int>(fl_value_get_int(samplesVal));
         FlValue* normVal = fl_value_lookup_string(args, "normalization");
-        std::string normalization = normVal ? fl_value_get_string(normVal) : "perFile";
+        std::string normalization = "perFile";
+        if (normVal && fl_value_get_type(normVal) == FL_VALUE_TYPE_STRING) {
+            normalization = fl_value_get_string(normVal);
+        }
 
         g_object_ref(method_call);
         std::thread([method_call, path, numberOfSamples, normalization]() {
@@ -991,7 +994,10 @@ static void handle_method_call(AudioDecoderPlugin* self,
         std::string formatHint = fl_value_get_string(hintVal);
         int numberOfSamples = static_cast<int>(fl_value_get_int(samplesVal));
         FlValue* normVal = fl_value_lookup_string(args, "normalization");
-        std::string normalization = normVal ? fl_value_get_string(normVal) : "perFile";
+        std::string normalization = "perFile";
+        if (normVal && fl_value_get_type(normVal) == FL_VALUE_TYPE_STRING) {
+            normalization = fl_value_get_string(normVal);
+        }
 
         g_object_ref(method_call);
         std::thread([method_call, inputData = std::move(inputData), formatHint,
