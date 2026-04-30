@@ -224,7 +224,11 @@ void AudioDecoderPlugin::HandleMethodCall(
         int numberOfSamples = std::get<int32_t>(samplesIt->second);
         std::string normalization = "perFile";
         auto normIt = args->find(flutter::EncodableValue("normalization"));
-        if (normIt != args->end()) normalization = std::get<std::string>(normIt->second);
+        if (normIt != args->end()) {
+            if (auto* s = std::get_if<std::string>(&normIt->second)) {
+                normalization = *s;
+            }
+        }
 
         auto shared_result = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
             std::move(result));
@@ -414,7 +418,11 @@ void AudioDecoderPlugin::HandleMethodCall(
         int numberOfSamples = std::get<int32_t>(samplesIt->second);
         std::string normalization = "perFile";
         auto normIt = args->find(flutter::EncodableValue("normalization"));
-        if (normIt != args->end()) normalization = std::get<std::string>(normIt->second);
+        if (normIt != args->end()) {
+            if (auto* s = std::get_if<std::string>(&normIt->second)) {
+                normalization = *s;
+            }
+        }
 
         auto shared_result = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
             std::move(result));
