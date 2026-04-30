@@ -19,6 +19,7 @@
 #include <functional>
 #include <cmath>
 #include <algorithm>
+#include <cctype> 
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
@@ -777,7 +778,7 @@ flutter::EncodableMap AudioDecoderPlugin::GetAudioInfo(const std::string& path) 
 
     IMFMediaSource* pSource = nullptr;
     hr = pReader->GetServiceForStream(
-        MF_SOURCE_READER_MEDIASOURCE, GUID_NULL,
+        static_cast<DWORD>(MF_SOURCE_READER_MEDIASOURCE), GUID_NULL,
         __uuidof(IMFMediaSource), reinterpret_cast<LPVOID*>(&pSource));
     if (SUCCEEDED(hr) && pSource) {
         IMFPresentationDescriptor* pPD = nullptr;
@@ -845,7 +846,10 @@ std::string AudioDecoderPlugin::TrimAudio(
     }
 
     std::string ext = outputPath.substr(outputPath.find_last_of('.') + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+		    [](unsigned char c) {
+		    	return static_cast<char>(std::tolower(c));
+		});
 
     if (ext == "m4a") {
         // M4A trimming uses DecodeToPcm (full buffering) because
@@ -902,7 +906,7 @@ std::string AudioDecoderPlugin::TrimAudio(
 
         for (size_t offset = 0; offset < pcm.data.size(); offset += chunkSize) {
             DWORD thisChunk = static_cast<DWORD>(
-                std::min(static_cast<size_t>(chunkSize), pcm.data.size() - offset));
+                (std::min)(static_cast<size_t>(chunkSize), pcm.data.size() - offset));
 
             IMFMediaBuffer* pBuffer = nullptr;
             MFCreateMemoryBuffer(thisChunk, &pBuffer);
@@ -950,14 +954,14 @@ flutter::EncodableList AudioDecoderPlugin::GetWaveform(
 
     const int16_t* samples = reinterpret_cast<const int16_t*>(pcm.data.data());
     size_t totalSamples = pcm.data.size() / 2;
-    size_t samplesPerWindow = std::max(static_cast<size_t>(1), totalSamples / numberOfSamples);
+    size_t samplesPerWindow = (std::max)(static_cast<size_t>(1), totalSamples / numberOfSamples);
 
     std::vector<double> waveform;
     double maxRms = 0;
 
     for (int i = 0; i < numberOfSamples; i++) {
         size_t start = static_cast<size_t>(i) * totalSamples / numberOfSamples;
-        size_t end = std::min(start + samplesPerWindow, totalSamples);
+        size_t end = (std::min)(start + samplesPerWindow, totalSamples);
         if (start >= totalSamples) break;
 
         double sumSquares = 0;
