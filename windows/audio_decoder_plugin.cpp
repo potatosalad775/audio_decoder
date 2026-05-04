@@ -513,7 +513,15 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
     pOutputType->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bitsPerSample);
     pOutputType->Release();
 
-    int64_t endHns = (endMs >= 0) ? endMs * 10000LL : -1;
+    // WMF ignores the AAC edit list, causing timestamps to overshoot chunk boundaries.
+    // Instead, compute exact byte limits from duration
+    const int64_t blockAlign = channels * (bitsPerSample / 8);
+    const int64_t bytesPerSec = sampleRate * blockAlign;
+    const int64_t maxBytes = (startMs >= 0 && endMs > startMs)
+        ? (endMs - startMs) * bytesPerSec / 1000 / blockAlign * blockAlign
+        : -1;
+    int64_t bytesWritten = 0;
+    int64_t startSkipBytes = (startMs > 0) ? -1 : 0;
 
     try {
         while (true) {
@@ -530,12 +538,19 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
                 break;
             }
 
-            if (endHns >= 0 && timestamp > endHns) {
+            if (maxBytes >= 0 && bytesWritten >= maxBytes) {
                 if (pSample) pSample->Release();
                 break;
             }
 
             if (pSample) {
+                if (startSkipBytes < 0) {
+                    const int64_t diffHns = startMs * 10000LL - timestamp;
+                    startSkipBytes = (diffHns > 0)
+                        ? diffHns * bytesPerSec / 10000000LL / blockAlign * blockAlign
+                        : 0;
+                }
+                
                 IMFMediaBuffer* pBuffer = nullptr;
                 pSample->ConvertToContiguousBuffer(&pBuffer);
                 if (pBuffer) {
@@ -543,13 +558,34 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
                     DWORD cbBuffer = 0;
                     hr = pBuffer->Lock(&pAudioData, nullptr, &cbBuffer);
                     if (SUCCEEDED(hr)) {
-                        try {
-                            onChunk(pAudioData, cbBuffer);
-                        } catch (...) {
-                            pBuffer->Unlock();
-                            pBuffer->Release();
-                            pSample->Release();
-                            throw;
+                        DWORD offset = 0;
+                        if (startSkipBytes > 0) {
+                            if ((int64_t)cbBuffer <= startSkipBytes) {
+                                startSkipBytes -= cbBuffer;
+                                offset = cbBuffer;
+                            } else {
+                                offset = (DWORD)startSkipBytes;
+                                startSkipBytes = 0;
+                            }
+                        }
+
+                        if (offset < cbBuffer) {
+                            DWORD toWrite = cbBuffer - offset;
+                            if (maxBytes >= 0) {
+                                int64_t remaining = maxBytes - bytesWritten;
+                                if ((int64_t)toWrite > remaining) {
+                                    toWrite = (DWORD)(remaining / blockAlign * blockAlign);
+                                }
+                            }
+                            try {
+                                onChunk(pAudioData + offset, toWrite);
+                                bytesWritten += toWrite;
+                            } catch (...) {
+                                pBuffer->Unlock();
+                                pBuffer->Release();
+                                pSample->Release();
+                                throw;
+                            }
                         }
                         pBuffer->Unlock();
                     }
