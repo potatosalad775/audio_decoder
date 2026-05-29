@@ -29,22 +29,22 @@ final class AudioDecoderWeb extends AudioDecoderPlatform {
   // --- File-based methods (not supported on web) ---
 
   @override
-  Future<String> convertToWav(String inputPath, String outputPath, {int? sampleRate, int? channels, int? bitDepth}) {
+  Future<String> convertToWav(String inputPath, String outputPath, {int? sampleRate, int? channels, int? bitDepth}) async {
     throw UnsupportedError('File-based operations are not supported on web. Use convertToWavBytes instead.');
   }
 
   @override
-  Future<String> convertToM4a(String inputPath, String outputPath) {
+  Future<String> convertToM4a(String inputPath, String outputPath) async {
     throw UnsupportedError('File-based operations are not supported on web. Use convertToM4aBytes instead.');
   }
 
   @override
-  Future<AudioInfo> getAudioInfo(String path) {
+  Future<AudioInfo> getAudioInfo(String path) async {
     throw UnsupportedError('File-based operations are not supported on web. Use getAudioInfoBytes instead.');
   }
 
   @override
-  Future<String> trimAudio(String inputPath, String outputPath, Duration start, Duration end) {
+  Future<String> trimAudio(String inputPath, String outputPath, Duration start, Duration end) async {
     throw UnsupportedError('File-based operations are not supported on web. Use trimAudioBytes instead.');
   }
 
@@ -53,7 +53,7 @@ final class AudioDecoderWeb extends AudioDecoderPlatform {
     String path,
     int numberOfSamples, {
     WaveformNormalization normalization = WaveformNormalization.perFile,
-  }) {
+  }) async {
     throw UnsupportedError('File-based operations are not supported on web. Use getWaveformBytes instead.');
   }
 
