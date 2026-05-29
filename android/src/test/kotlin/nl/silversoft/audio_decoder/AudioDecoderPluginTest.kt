@@ -4,6 +4,8 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.mockito.Mockito
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /*
  * Once you have built the plugin's example app, you can run these tests from the command
@@ -171,5 +173,46 @@ internal class AudioDecoderPluginTest {
             Mockito.eq("inputData, formatHint and numberOfSamples are required"),
             Mockito.isNull()
         )
+    }
+
+    @Test
+    fun computeWaveform_largeSampleCount_doesNotOverflow() {
+        val plugin = AudioDecoderPlugin()
+
+        // Regression for #45: a multi-minute file decodes to millions of PCM
+        // samples. With 32-bit window arithmetic `i * totalSamples` exceeds
+        // Int.MAX_VALUE and wraps to a negative offset, crashing with an
+        // IndexOutOfBoundsException. This sample count matches the length from
+        // the original bug report.
+        val numberOfSamples = 1000
+        val samples = ShortArray(15_567_358) { 1000 }
+
+        val waveform = plugin.computeWaveform(samples, numberOfSamples, "perFile")
+
+        assertEquals(numberOfSamples, waveform.size)
+        assertTrue(waveform.all { it in 0.0..1.0 })
+    }
+
+    @Test
+    fun computeWaveform_emptySamples_returnsZeroFilledWaveform() {
+        val plugin = AudioDecoderPlugin()
+
+        val waveform = plugin.computeWaveform(ShortArray(0), 256, "perFile")
+
+        assertEquals(256, waveform.size)
+        assertTrue(waveform.all { it == 0.0 })
+    }
+
+    @Test
+    fun computeWaveform_absoluteNormalization_scalesByFullScale() {
+        val plugin = AudioDecoderPlugin()
+
+        // A constant full-scale signal must normalize to 1.0 in absolute mode.
+        val samples = ShortArray(2048) { Short.MAX_VALUE }
+
+        val waveform = plugin.computeWaveform(samples, 128, "absolute")
+
+        assertEquals(128, waveform.size)
+        assertTrue(waveform.all { it > 0.99 && it <= 1.0 })
     }
 }

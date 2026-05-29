@@ -905,22 +905,42 @@ class AudioDecoderPlugin : FlutterPlugin, MethodCallHandler {
         codec.release()
         extractor.release()
 
-        if (allSamples.isEmpty()) {
+        return computeWaveform(allSamples.toShortArray(), numberOfSamples, normalization)
+    }
+
+    /**
+     * Reduces decoded 16-bit PCM [samples] to a normalized RMS waveform of
+     * [numberOfSamples] points.
+     *
+     * The window bounds are computed with 64-bit arithmetic on purpose: for
+     * longer files the product `i * totalSamples` easily exceeds Int.MAX_VALUE,
+     * which would silently overflow to a negative offset and crash with an
+     * IndexOutOfBoundsException. The caller is expected to validate
+     * [normalization] beforehand.
+     */
+    internal fun computeWaveform(
+        samples: ShortArray,
+        numberOfSamples: Int,
+        normalization: String = "perFile",
+    ): List<Double> {
+        if (samples.isEmpty()) {
             return List(numberOfSamples) { 0.0 }
         }
 
         // Compute RMS per window
+        val totalSamples = samples.size
+        val windowSize = max(1, totalSamples / numberOfSamples)
         val waveform = mutableListOf<Double>()
         var maxRms = 0.0
 
         for (i in 0 until numberOfSamples) {
-            val start = i * allSamples.size / numberOfSamples
-            val end = min(start + max(1, allSamples.size / numberOfSamples), allSamples.size)
-            if (start >= allSamples.size) break
+            val start = (i.toLong() * totalSamples / numberOfSamples).toInt()
+            if (start >= totalSamples) break
+            val end = min(start + windowSize, totalSamples)
 
             var sumSquares = 0.0
             for (j in start until end) {
-                val sample = allSamples[j].toDouble()
+                val sample = samples[j].toDouble()
                 sumSquares += sample * sample
             }
             val rms = sqrt(sumSquares / (end - start))
