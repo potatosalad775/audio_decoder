@@ -1,3 +1,7 @@
+## 0.8.1
+
+* **Fix `IndexOutOfBoundsException` on Android for long files** (#45) — `getWaveform` / `getWaveformBytes` crashed on medium-to-large audio (e.g. a 5-minute MP3) because the per-window offset `i * totalSamples` overflowed a 32-bit `Int` and wrapped to a negative index. The window bounds are now computed with 64-bit arithmetic.
+
 ## 0.8.0
 
 * **`WaveformNormalization` option** — opt into absolute amplitude scaling on `getWaveform` / `getWaveformBytes` to preserve loudness differences between tracks (useful for music apps that show several songs side by side).
