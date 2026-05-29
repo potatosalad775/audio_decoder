@@ -33,6 +33,10 @@ static constexpr size_t kWavHeaderSize = 44;
 /// Maximum PCM data size that fits in a standard WAV file (~4 GB).
 static constexpr int64_t kMaxWavDataSize = 0xFFFFFFFFL - 36;
 
+/// Media Foundation expresses time in 100-nanosecond units ("hns").
+static constexpr int64_t kHnsPerMs = 10000LL;
+static constexpr int64_t kHnsPerSec = 10000000LL;
+
 static std::wstring Utf8ToWide(const std::string& utf8) {
     if (utf8.empty()) return {};
     int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
@@ -494,7 +498,7 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
         PROPVARIANT var;
         PropVariantInit(&var);
         var.vt = VT_I8;
-        var.hVal.QuadPart = startMs * 10000LL;
+        var.hVal.QuadPart = startMs * kHnsPerMs;
         pReader->SetCurrentPosition(GUID_NULL, var);
         PropVariantClear(&var);
     }
@@ -513,15 +517,30 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
     pOutputType->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bitsPerSample);
     pOutputType->Release();
 
-    // WMF ignores the AAC edit list, causing timestamps to overshoot chunk boundaries.
-    // Instead, compute exact byte limits from duration
+    // WMF ignores the AAC edit list, causing timestamps to overshoot chunk
+    // boundaries. Instead, compute exact byte limits from the duration.
     const int64_t blockAlign = channels * (bitsPerSample / 8);
     const int64_t bytesPerSec = sampleRate * blockAlign;
-    const int64_t maxBytes = (startMs >= 0 && endMs > startMs)
-        ? (endMs - startMs) * bytesPerSec / 1000 / blockAlign * blockAlign
+
+    // A malformed media type (channels, bitsPerSample or sampleRate reported as
+    // 0) leaves us without a usable byte rate. Without it we cannot compute byte
+    // windows, so fall back to passing samples through unbounded rather than
+    // dividing by zero or silently emitting nothing (maxBytes would be 0).
+    const bool canWindow = blockAlign > 0 && sampleRate > 0;
+
+    // Treat an unspecified start (startMs < 0) as 0 so an explicit endMs still
+    // bounds the output; decoding already begins at 0 when no seek was issued.
+    const int64_t windowStartMs = (startMs > 0) ? startMs : 0;
+
+    // A specified endMs always bounds the output: an empty or reversed window
+    // (endMs <= windowStartMs) clamps to 0 bytes, matching the empty-trim
+    // behaviour of the other platforms. Only an unspecified endMs (< 0) decodes
+    // to the end of the stream.
+    const int64_t maxBytes = (canWindow && endMs >= 0)
+        ? (std::max)(int64_t{0}, endMs - windowStartMs) * bytesPerSec / 1000 / blockAlign * blockAlign
         : -1;
     int64_t bytesWritten = 0;
-    int64_t startSkipBytes = (startMs > 0) ? -1 : 0;
+    int64_t startSkipBytes = (canWindow && startMs > 0) ? -1 : 0;
 
     try {
         while (true) {
@@ -545,12 +564,12 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
 
             if (pSample) {
                 if (startSkipBytes < 0) {
-                    const int64_t diffHns = startMs * 10000LL - timestamp;
+                    const int64_t diffHns = startMs * kHnsPerMs - timestamp;
                     startSkipBytes = (diffHns > 0)
-                        ? diffHns * bytesPerSec / 10000000LL / blockAlign * blockAlign
+                        ? diffHns * bytesPerSec / kHnsPerSec / blockAlign * blockAlign
                         : 0;
                 }
-                
+
                 IMFMediaBuffer* pBuffer = nullptr;
                 pSample->ConvertToContiguousBuffer(&pBuffer);
                 if (pBuffer) {
@@ -971,7 +990,7 @@ std::string AudioDecoderPlugin::TrimAudio(
             MFCreateSample(&pSample);
             pSample->AddBuffer(pBuffer);
             pSample->SetSampleTime(timestamp);
-            LONGLONG duration = (LONGLONG)thisChunk * 10000000LL / (pcm.sampleRate * blockAlign);
+            LONGLONG duration = (LONGLONG)thisChunk * kHnsPerSec / (pcm.sampleRate * blockAlign);
             pSample->SetSampleDuration(duration);
 
             pWriter->WriteSample(streamIndex, pSample);
