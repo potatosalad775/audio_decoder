@@ -1,6 +1,8 @@
 ## 0.8.1
 
 * **Fix `IndexOutOfBoundsException` on Android for long files** (#45) — `getWaveform` / `getWaveformBytes` crashed on medium-to-large audio (e.g. a 5-minute MP3) because the per-window offset `i * totalSamples` overflowed a 32-bit `Int` and wrapped to a negative index. The window bounds are now computed with 64-bit arithmetic.
+* **Web: file-based methods reject their `Future` instead of throwing synchronously** — `convertToWav`, `convertToM4a`, `getAudioInfo`, `trimAudio`, and `getWaveform` are unsupported on web; the `UnsupportedError` is now delivered through the returned `Future`, so `await` / `.catchError` handle it consistently.
+* Example app: file-based actions are disabled on web with an explanatory note, since they rely on `dart:io` (use the bytes-based API instead).
 
 ## 0.8.0
 
