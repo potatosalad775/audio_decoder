@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audio_decoder/audio_decoder.dart';
@@ -464,6 +465,28 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  /// Note shown on web for file-based sections, which rely on `dart:io` and
+  /// are unsupported there. Directs the user to the Bytes API instead.
+  Widget _webUnsupportedNote() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.public_off, size: 16, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Not available on web — use the Bytes API below instead.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -555,20 +578,21 @@ class _MyAppState extends State<MyApp> {
                       title: 'Conversion',
                       icon: Icons.swap_horiz,
                       children: [
+                        if (kIsWeb) _webUnsupportedNote(),
                         _actionButton(
                           label: 'MP3 → WAV',
                           icon: Icons.audio_file,
-                          onPressed: _busy ? null : () => _convertToWav(_kTestToneMp3),
+                          onPressed: (_busy || kIsWeb) ? null : () => _convertToWav(_kTestToneMp3),
                         ),
                         _actionButton(
                           label: 'M4A → WAV',
                           icon: Icons.audio_file,
-                          onPressed: _busy ? null : () => _convertToWav(_kTestToneM4a),
+                          onPressed: (_busy || kIsWeb) ? null : () => _convertToWav(_kTestToneM4a),
                         ),
                         _actionButton(
                           label: 'WAV → M4A',
                           icon: Icons.audio_file,
-                          onPressed: _busy ? null : () => _convertToM4a(_kTestToneWav),
+                          onPressed: (_busy || kIsWeb) ? null : () => _convertToM4a(_kTestToneWav),
                         ),
                       ],
                     ),
@@ -576,20 +600,21 @@ class _MyAppState extends State<MyApp> {
                       title: 'Info & Analysis',
                       icon: Icons.analytics_outlined,
                       children: [
+                        if (kIsWeb) _webUnsupportedNote(),
                         _actionButton(
                           label: 'Get Audio Info (MP3)',
                           icon: Icons.info_outline,
-                          onPressed: _busy ? null : () => _getAudioInfo(_kTestToneMp3),
+                          onPressed: (_busy || kIsWeb) ? null : () => _getAudioInfo(_kTestToneMp3),
                         ),
                         _actionButton(
                           label: 'Get Waveform (MP3)',
                           icon: Icons.graphic_eq,
-                          onPressed: _busy ? null : () => _getWaveform(_kTestToneMp3),
+                          onPressed: (_busy || kIsWeb) ? null : () => _getWaveform(_kTestToneMp3),
                         ),
                         _actionButton(
                           label: 'Get Waveform — absolute (MP3)',
                           icon: Icons.equalizer,
-                          onPressed: _busy
+                          onPressed: (_busy || kIsWeb)
                               ? null
                               : () => _getWaveform(
                                   _kTestToneMp3,
@@ -602,10 +627,11 @@ class _MyAppState extends State<MyApp> {
                       title: 'Trim',
                       icon: Icons.content_cut,
                       children: [
+                        if (kIsWeb) _webUnsupportedNote(),
                         _actionButton(
                           label: 'Trim MP3 (0.2s – 0.8s) → WAV',
                           icon: Icons.content_cut,
-                          onPressed: _busy ? null : () => _trimAudio(_kTestToneMp3),
+                          onPressed: (_busy || kIsWeb) ? null : () => _trimAudio(_kTestToneMp3),
                         ),
                       ],
                     ),
