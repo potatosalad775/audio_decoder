@@ -522,10 +522,11 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
     const int64_t blockAlign = channels * (bitsPerSample / 8);
     const int64_t bytesPerSec = sampleRate * blockAlign;
 
-    // A malformed media type (channels or bitsPerSample reported as 0) yields a
-    // zero block alignment. Without it we cannot compute byte windows, so fall
-    // back to passing samples through unbounded rather than dividing by zero.
-    const bool canWindow = blockAlign > 0;
+    // A malformed media type (channels, bitsPerSample or sampleRate reported as
+    // 0) leaves us without a usable byte rate. Without it we cannot compute byte
+    // windows, so fall back to passing samples through unbounded rather than
+    // dividing by zero or silently emitting nothing (maxBytes would be 0).
+    const bool canWindow = blockAlign > 0 && sampleRate > 0;
 
     // Treat an unspecified start (startMs < 0) as 0 so an explicit endMs still
     // bounds the output; decoding already begins at 0 when no seek was issued.
