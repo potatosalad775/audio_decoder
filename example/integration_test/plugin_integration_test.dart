@@ -357,6 +357,30 @@ void main() {
         );
       },
     );
+
+    testWidgets('long file does not overflow window offsets (regression #45)', (
+      WidgetTester tester,
+    ) async {
+      // A multi-minute file decodes to millions of PCM samples. With 32-bit
+      // window arithmetic the offset `i * totalSamples` exceeds Int.MAX_VALUE
+      // and wraps to a negative index, crashing on Android with an
+      // IndexOutOfBoundsException. 3M mono frames is enough to push the last
+      // windows past the 32-bit limit (999 * 3_000_000 ≈ 3.0e9 > 2.15e9).
+      final inputPath = '${tempDir.path}/long_tone.wav';
+      await File(inputPath).writeAsBytes(buildPcmWav(frameCount: 3000000));
+
+      const sampleCount = 1000;
+      final waveform = await AudioDecoder.getWaveform(
+        inputPath,
+        numberOfSamples: sampleCount,
+      );
+
+      expect(waveform.length, sampleCount);
+      for (final sample in waveform) {
+        expect(sample, greaterThanOrEqualTo(0.0));
+        expect(sample, lessThanOrEqualTo(1.0));
+      }
+    });
   });
 
   // ── 7. Bytes API ────────────────────────────────────────────────────
