@@ -531,8 +531,13 @@ AudioDecoderPlugin::PcmInfo AudioDecoderPlugin::DecodeToPcmStream(
     // Treat an unspecified start (startMs < 0) as 0 so an explicit endMs still
     // bounds the output; decoding already begins at 0 when no seek was issued.
     const int64_t windowStartMs = (startMs > 0) ? startMs : 0;
-    const int64_t maxBytes = (canWindow && endMs > windowStartMs)
-        ? (endMs - windowStartMs) * bytesPerSec / 1000 / blockAlign * blockAlign
+
+    // A specified endMs always bounds the output: an empty or reversed window
+    // (endMs <= windowStartMs) clamps to 0 bytes, matching the empty-trim
+    // behaviour of the other platforms. Only an unspecified endMs (< 0) decodes
+    // to the end of the stream.
+    const int64_t maxBytes = (canWindow && endMs >= 0)
+        ? (std::max)(int64_t{0}, endMs - windowStartMs) * bytesPerSec / 1000 / blockAlign * blockAlign
         : -1;
     int64_t bytesWritten = 0;
     int64_t startSkipBytes = (canWindow && startMs > 0) ? -1 : 0;
